@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Painel de Contatos - SunShield</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background-color: #f2f2f2;
+      padding: 30px;
+      box-sizing: border-box;
+    }
+
+    main {
+      flex: 1;
+    }
+
+    h1, h2 {
+      color: #333;
+      text-align: center;
+    }
+
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    li {
+      background: #fff;
+      margin-bottom: 10px;
+      padding: 15px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    li.emergencia {
+      background-color: #f8d7da; /* Vermelho claro para emergência */
+      border: 1px solid #f5c6cb;
+    }
+
+    button {
+      padding: 8px 12px;
+      margin-left: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    input {
+      padding: 8px;
+      margin-right: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    .form-container {
+      margin-top: 20px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    footer {
+      background-color: #e0e0e0;
+      padding: 15px 30px;
+      text-align: center;
+      font-size: 14px;
+      color: #555;
+      border-top: 1px solid #ccc;
+    }
+
+    .footer-content {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .footer-content img {
+      height: 40px;
+      object-fit: contain;
+    }
+
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .logo-container img {
+      height: 50px;
+      object-fit: contain;
+    }
+
+    @media (max-width: 600px) {
+      .footer-content {
+        flex-direction: column;
+        gap: 10px;
+      }
+    }
+
+  </style>
+</head>
+<body>
+  <div class="logo-container">
+    <img src="https://raw.githubusercontent.com/NadrjMV/botcall/main/logo.png" alt="Logo da empresa">
+  </div>
+  
+  <main>
+    <h1>📇 Painel de Contatos SunShield</h1>
+    <ul id="lista-contatos"></ul>
+
+    <div class="form-container">
+      <h2>➕ Adicionar novo contato</h2>
+      <input id="nome" placeholder="Nome">
+      <input id="telefone" placeholder="Telefone (+55...)">
+      <button onclick="adicionarContato()">Salvar</button>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-content">
+      <span>© 2025 SunShield — Desenvolvido por <strong>Jordanlvs 💼</strong></span>
+    </div>
+  </footer>
+
+  <script>
+    async function carregarContatos() {
+      const res = await fetch('/get-contacts');
+      const contatos = await res.json();
+      const lista = document.getElementById('lista-contatos');
+      lista.innerHTML = '';
+      for (const [nome, telefone] of Object.entries(contatos)) {
+        const item = document.createElement('li');
+        const isEmergencia = nome.toLowerCase() === 'emergencia'; // Identificando se é o contato de emergência
+
+        item.classList.add(isEmergencia ? 'emergencia' : ''); // Adiciona a classe 'emergencia' se for o caso
+
+        item.innerHTML = `
+          <span><strong>${nome}</strong>: ${telefone}</span>
+          <div>
+            <button onclick="trocarContato('${nome}')">🔄 Trocar</button>
+            <button onclick="deletarContato('${nome}')">🗑️ Deletar</button>
+          </div>
+        `;
+        lista.appendChild(item);
+      }
+    }
+
+    async function adicionarContato() {
+      const nome = document.getElementById('nome').value;
+      const telefone = document.getElementById('telefone').value;
+      const res = await fetch('/add-contact', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ nome, telefone })
+      });
+      const result = await res.json();
+      alert(result.mensagem);
+      carregarContatos();
+    }
+
+    async function trocarContato(nome) {
+      const novoNome = prompt(`Digite o novo nome para o contato "${nome}":`);
+      const novoTelefone = prompt(`Digite o novo telefone para "${novoNome}":`);
+
+      if (novoNome && novoTelefone) {
+        const res = await fetch('/delete-contact', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ nome })
+        });
+
+        const result = await res.json();
+        alert(result.mensagem);
+
+        await fetch('/add-contact', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ nome: novoNome, telefone: novoTelefone })
+        });
+
+        carregarContatos();
+      }
+    }
+
+    async function deletarContato(nome) {
+      const confirmar = confirm(`Tem certeza que deseja remover o contato "${nome}"?`);
+      if (!confirmar) return;
+
+      const res = await fetch('/delete-contact', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ nome })
+      });
+      const result = await res.json();
+      alert(result.mensagem);
+      carregarContatos();
+    }
+
+    carregarContatos();
+  </script>
+</body>
+</html>
