@@ -62,6 +62,7 @@ https://confirmation-u5hq.onrender.com/verificacao1
 ```json
 {
   "verificacao1": "+5511999999999",
+  "verificacao2": "+5511999999999"  # SEM VÍRGULA AQUI
 }
 
 ```
