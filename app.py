@@ -8,20 +8,21 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from pytz import timezone
-from signalwire.rest import Client
-from twilio.twiml.voice_response import VoiceResponse, Gather  # SignalWire também usa TwiML
+from signalwire.rest import Client as SignalWireClient
+from twilio.twiml.voice_response import VoiceResponse, Gather  # SignalWire tmb usa TwiML
 
 load_dotenv()
 app = Flask(__name__)
 
 # SignalWire
-signalwire_project = os.getenv("SIGNALWIRE_PROJECT")
-signalwire_token = os.getenv("SIGNALWIRE_TOKEN")
-signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # ex: example.signalwire.com
+project_id = os.getenv("SIGNALWIRE_PROJECT")
+api_token = os.getenv("SIGNALWIRE_TOKEN")
+space_url = os.getenv("SIGNALWIRE_SPACE_URL")  # ex: sunshield.signalwire.com
 base_url = os.getenv("BASE_URL")
 signalwire_number = os.getenv("SIGNALWIRE_NUMBER")
 
-client = Client(signalwire_project, signalwire_token, signalwire_space=signalwire_space)
+client = SignalWireClient(project_id, api_token)
+client.api.base_url = f"https://{space_url}"
 
 CONTACTS_FILE = "contacts.json"
 
@@ -251,7 +252,7 @@ def agendar_multiplas_ligacoes():
 
 def agendar_ligacoes_fixas():
     ligacoes = [
-        {"nome": "jordan", "hora": 11, "minuto": 10},
+        {"nome": "jordan", "hora": 11, "minuto": 40},
     ]
     for item in ligacoes:
         scheduler.add_job(
