@@ -212,10 +212,6 @@ def _twiml_response(texto, voice="br-PT-Wavenet-A"):
 
 scheduler = BackgroundScheduler(timezone=timezone("America/Sao_Paulo"))
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-
 @app.route("/forcar_ligacao/<nome>")
 def forcar_ligacao(nome):
     ligar_para_verificacao_por_nome(nome)
@@ -269,5 +265,9 @@ def agendar_ligacoes_fixas():
         )
 
 scheduler.start()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
 
 #created by Jordanlvs 💼, all rights reserved ® 
