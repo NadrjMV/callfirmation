@@ -212,6 +212,10 @@ def _twiml_response(texto, voice="br-PT-Wavenet-A"):
 
 scheduler = BackgroundScheduler(timezone=timezone("America/Sao_Paulo"))
 
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
 @app.route("/agendar-unica", methods=["POST"])
 def agendar_unica():
     data = request.get_json()
