@@ -217,6 +217,17 @@ def forcar_ligacao(nome):
     ligar_para_verificacao_por_nome(nome)
     return f"Ligação forçada para {nome}"
 
+@app.route("/test-env")
+def test_env():
+    return {
+        "PROJECT_ID": os.environ.get("PROJECT_ID"),
+        "API_TOKEN": os.environ.get("API_TOKEN"),
+        "PORT": os.environ.get("PORT", 5000)
+    }
+
+print("PROJECT_ID:", os.environ.get("PROJECT_ID"))
+print("API_TOKEN:", os.environ.get("API_TOKEN"))
+
 @app.route("/agendar-unica", methods=["POST"])
 def agendar_unica():
     data = request.get_json()
