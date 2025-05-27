@@ -216,6 +216,11 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 
+@app.route("/forcar_ligacao/<nome>")
+def forcar_ligacao(nome):
+    ligar_para_verificacao_por_nome(nome)
+    return f"Ligação forçada para {nome}"
+
 @app.route("/agendar-unica", methods=["POST"])
 def agendar_unica():
     data = request.get_json()
@@ -251,7 +256,7 @@ def agendar_multiplas_ligacoes():
 
 def agendar_ligacoes_fixas():
     ligacoes = [
-        {"nome": "jordan", "hora": 1, "minuto": 1},
+        {"nome": "jordan", "hora": 11, "minuto": 10},
     ]
     for item in ligacoes:
         scheduler.add_job(
