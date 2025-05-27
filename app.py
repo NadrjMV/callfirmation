@@ -251,7 +251,7 @@ def agendar_multiplas_ligacoes():
 
 def agendar_ligacoes_fixas():
     ligacoes = [
-        {"nome": "jordan", "hora": 10, "minuto": 44},
+        {"nome": "jordan", "hora": 1, "minuto": 1},
     ]
     for item in ligacoes:
         scheduler.add_job(
