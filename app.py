@@ -232,7 +232,7 @@ def agendar_unica():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "verificacao1", "hora": datetime.now().hour, "minuto": (datetime.now().minute + 1) % 60},
+        {"nome": "jordan", "hora": datetime.now().hour, "minuto": (datetime.now().minute + 1) % 60},
     ]
     for ag in agendamentos:
         scheduler.add_job(
@@ -246,7 +246,7 @@ def agendar_multiplas_ligacoes():
 
 def agendar_ligacoes_fixas():
     ligacoes = [
-        {"nome": "fk", "hora": 9, "minuto": 22},
+        {"nome": "jordan", "hora": 10, "minuto": 44},
     ]
     for item in ligacoes:
         scheduler.add_job(
