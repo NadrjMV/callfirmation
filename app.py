@@ -21,7 +21,8 @@ signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # ex: example.signalwire.c
 base_url = os.getenv("BASE_URL")
 signalwire_number = os.getenv("SIGNALWIRE_NUMBER")
 
-client = Client(signalwire_project, signalwire_token, signalwire_space=signalwire_space)
+client = Client(signalwire_project, signalwire_token)
+client.api.base_url = f"https://sunshield.signalwire.com"
 
 CONTACTS_FILE = "contacts.json"
 
