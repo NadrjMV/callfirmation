@@ -5,4 +5,4 @@ python-dotenv==1.0.1
 APScheduler==3.10.4
 pytz==2024.1
 gunicorn==21.2.0
-signalwire==3.4.5
+signalwire
