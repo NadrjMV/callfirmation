@@ -1,26 +1,27 @@
-# app.py
 import os
 import json
 import html
 import phonenumbers
 from phonenumbers import NumberParseException, is_valid_number
 from flask import Flask, request, Response, jsonify, send_from_directory
-from plivo import RestClient
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from pytz import timezone
+import requests
 
 load_dotenv()
 app = Flask(__name__)
 
-plivo_auth_id = os.getenv("PLIVO_AUTH_ID")
-plivo_auth_token = os.getenv("PLIVO_AUTH_TOKEN")
-plivo_number = os.getenv("PLIVO_NUMBER")
-base_url = os.getenv("BASE_URL")
-client = RestClient(plivo_auth_id, plivo_auth_token)
+ZENVIA_TOKEN = os.getenv("ZENVIA_API_TOKEN")
+ZENVIA_FROM = os.getenv("ZENVIA_FROM_NUMBER")
+BASE_URL = os.getenv("BASE_URL")  # ex: https://seu-app.onrender.com
 
 CONTACTS_FILE = "contacts.json"
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
 
 def load_contacts():
     with open(CONTACTS_FILE, "r", encoding="utf-8") as f:
@@ -29,6 +30,24 @@ def load_contacts():
 def save_contacts(data):
     with open(CONTACTS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+def validar_numero(numero):
+    try:
+        return is_valid_number(phonenumbers.parse(numero, "BR"))
+    except NumberParseException:
+        return False
+
+def zenvia_request(path, payload):
+    url = f"https://api.zenvia.com/v2/voice/calls{path}"
+    headers = {
+        "Authorization": f"Bearer {ZENVIA_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    return requests.post(url, headers=headers, json=payload)
+
+# -------------------------------------------------------------------
+# Rotas de CRUD de contatos
+# -------------------------------------------------------------------
 
 @app.route("/add-contact", methods=["POST"])
 def add_contact():
@@ -59,67 +78,13 @@ def get_contacts():
 def serve_painel():
     return send_from_directory(".", "painel-contatos.html")
 
-@app.route("/verifica-sinal", methods=["GET", "POST"])
-def verifica_sinal():
-    resposta = request.form.get("SpeechResult", "").lower()
-    tentativa = int(request.args.get("tentativa", 1))
-    print(f"[RESPOSTA - Tentativa {tentativa}] {resposta}")
-
-    if "protegido" in resposta:
-        print("[SUCESSO] Palavra correta detectada.")
-        return _plivo_response("Entendido. Obrigado.")
-
-    if tentativa < 2:
-        print("[TENTATIVA FALHOU] Repetindo verificação...")
-        return _plivo_gather_response("Contra senha incorreta. Fale novamente.", tentativa + 1)
-
-    print("[FALHA TOTAL] Chamando número de emergência...")
-    contatos = load_contacts()
-    numero_emergencia = contatos.get("emergencia")
-    numero_falhou = request.values.get("To", None)
-    nome_falhou = next((nome for nome, tel in contatos.items() if tel == numero_falhou), None)
-
-    if numero_emergencia and validar_numero(numero_emergencia):
-        ligar_para_emergencia(numero_emergencia, numero_falhou, nome_falhou)
-        return _plivo_response("Falha na confirmação. Chamando responsáveis.")
-    return _plivo_response("Erro ao tentar contatar emergência.")
-
-def ligar_para_verificacao(numero_destino):
-    client.calls.create(
-        from_=plivo_number,
-        to=numero_destino,
-        answer_url=f"{base_url}/verifica-sinal?tentativa=1",
-        answer_method="POST"
-    )
-
-def validar_numero(numero):
-    try:
-        return is_valid_number(phonenumbers.parse(numero, "BR"))
-    except NumberParseException:
-        return False
-
-def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha_nome=None):
-    if origem_falha_nome:
-        mensagem = f"Alerta de verificação de segurança. {origem_falha_nome} não respondeu à verificação. Por favor, entre em contato."
-    elif origem_falha_numero:
-        mensagem = f"O número {origem_falha_numero} não respondeu à verificação. Por favor, entre em contato."
-    else:
-        mensagem = "Alguém não respondeu à verificação de segurança."
-
-    client.calls.create(
-        from_=plivo_number,
-        to=numero_destino,
-        answer_url=f"{base_url}/mensagem-emergencia?msg={html.escape(mensagem)}",
-        answer_method="GET"
-    )
-
-@app.route("/mensagem-emergencia")
-def mensagem_emergencia():
-    msg = request.args.get("msg", "Alerta. Falha de verificação.")
-    return _plivo_response(msg + " Encerrando ligação.")
+# -------------------------------------------------------------------
+# Inicia a ligação de verificação
+# -------------------------------------------------------------------
 
 @app.route("/testar-verificacao/<nome>")
 def testar_verificacao(nome):
+    # dispara uma ligação de verificação para o contato
     ligar_para_verificacao_por_nome(nome)
     return f"Ligação de verificação para {nome} iniciada."
 
@@ -128,63 +93,138 @@ def ligar_para_verificacao_por_nome(nome):
     numero = contatos.get(nome.lower())
     if numero and validar_numero(numero):
         print(f"[AGENDAMENTO] Ligando para {nome}: {numero}")
-        ligar_para_verificacao(numero)
+        payload = {
+            "from": ZENVIA_FROM,
+            "to": numero,
+            "answerUrl": f"{BASE_URL}/verifica-sinal?nome={nome}"
+        }
+        r = zenvia_request("", payload)
+        print(">> Zenvia start:", r.status_code, r.text)
     else:
-        print(f"[ERRO] Contato '{nome}' inválido ou não encontrado.")
+        print(f"[ERRO] Contato '{nome}' não encontrado ou inválido.")
 
-def _plivo_response(texto):
-    return Response(f"""
-        <Response>
-            <Speak language="pt-BR" voice="WOMAN">{html.escape(texto)}</Speak>
-        </Response>
-    """, mimetype="text/xml")
+# -------------------------------------------------------------------
+# Fluxo de verificação: resposta ao answerUrl do Zenvia
+# -------------------------------------------------------------------
 
-def _plivo_gather_response(texto, tentativa):
-    return Response(f"""
-        <Response>
-            <GetInput action="{base_url}/verifica-sinal?tentativa={tentativa}" method="POST" inputType="speech" language="pt-BR" speechEndTimeout="auto">
-                <Speak language="pt-BR" voice="WOMAN">{html.escape(texto)}</Speak>
-            </GetInput>
-        </Response>
-    """, mimetype="text/xml")
+@app.route("/verifica-sinal", methods=["GET", "POST"])
+def verifica_sinal():
+    nome = request.args.get("nome")
+    tentativa = int(request.args.get("tentativa", 1))
+    # Monta resposta JSON para Zenvia callFlow
+    if tentativa == 1:
+        # 1ª vez diz "Central de monitoramento?" e escuta
+        resp = {
+            "actions": [
+                {"action": "say", "options": {"text": "Central de monitoramento?"}},
+                {"action": "listen", "options": {
+                    "timeout": 5,
+                    "endOnSilence": True,
+                    "bargeIn": True,
+                    "eventUrl": f"{BASE_URL}/handle-sinal?nome={nome}&tentativa=1"
+                }}
+            ]
+        }
+    else:
+        # 2ª tentativa
+        resp = {
+            "actions": [
+                {"action": "say", "options": {"text": "Contra senha incorreta. Fale novamente."}},
+                {"action": "listen", "options": {
+                    "timeout": 5,
+                    "endOnSilence": True,
+                    "bargeIn": True,
+                    "eventUrl": f"{BASE_URL}/handle-sinal?nome={nome}&tentativa=2"
+                }}
+            ]
+        }
+    return jsonify(resp)
+
+# -------------------------------------------------------------------
+# Trata o evento do listen do Zenvia
+# -------------------------------------------------------------------
+
+@app.route("/handle-sinal", methods=["POST"])
+def handle_sinal():
+    data = request.json or {}
+    texto = (data.get("speech", "") or "").lower()
+    nome = request.args.get("nome")
+    tentativa = int(request.args.get("tentativa", 1))
+    print(f"[RESPOSTA - Tentativa {tentativa}] {texto}")
+
+    if "protegido" in texto:
+        # sucesso
+        resp = {"actions": [{"action": "say", "options": {"text": "Entendido. Obrigado."}}]}
+        return jsonify(resp)
+
+    # falha
+    if tentativa < 2:
+        # redireciona para /verifica-sinal com tentativa+1
+        return jsonify({"redirectFlow": f"{BASE_URL}/verifica-sinal?nome={nome}&tentativa=2"})
+    # 2 falhas: chama emergência
+    print("[FALHA TOTAL] Chamando emergência...")
+    contatos = load_contacts()
+    emergencia = contatos.get("emergencia")
+    if emergencia and validar_numero(emergencia):
+        payload = {
+            "from": ZENVIA_FROM,
+            "to": emergencia,
+            "answerUrl": f"{BASE_URL}/mensagem-emergencia?nome={nome}"
+        }
+        r = zenvia_request("", payload)
+        print(">> Zenvia emergência:", r.status_code, r.text)
+    # finaliza resposta imediata (Zenvia fecha a call)
+    return jsonify({"actions": [{"action": "hangup"}]})
+
+# -------------------------------------------------------------------
+# Mensagem de emergência
+# -------------------------------------------------------------------
+
+@app.route("/mensagem-emergencia", methods=["GET"])
+def mensagem_emergencia():
+    nome = request.args.get("nome")
+    # “{nome} não respondeu à verificação”
+    texto = f"{nome} não respondeu à verificação"
+    resp = {"actions": [{"action": "say", "options": {"text": texto}}]}
+    return jsonify(resp)
+
+# -------------------------------------------------------------------
+# Agendamentos
+# -------------------------------------------------------------------
+
+scheduler = BackgroundScheduler(timezone=timezone("America/Sao_Paulo"))
 
 @app.route("/agendar-unica", methods=["POST"])
 def agendar_unica():
     data = request.get_json()
-    nome = data.get("nome")
-    hora = int(data.get("hora"))
-    minuto = int(data.get("minuto"))
-
+    nome = data["nome"]
+    hora = int(data["hora"])
+    minuto = int(data["minuto"])
     job_id = f"teste_{nome}_{hora}_{minuto}"
     scheduler.add_job(
-        func=lambda: ligar_para_verificacao_por_nome(nome),
+        func=lambda n=nome: ligar_para_verificacao_por_nome(n),
         trigger="cron",
         hour=hora,
         minute=minuto,
         id=job_id,
         replace_existing=True
     )
-    return jsonify({"status": "ok", "mensagem": f"Ligação para {nome} agendada às {hora:02d}:{minuto:02d}."})
+    return jsonify({"status":"ok","mensagem":f"Ligação para {nome} agendada às {hora:02d}:{minuto:02d}"})
 
-# ⏰ Agendamentos
-scheduler = BackgroundScheduler(timezone=timezone("America/Sao_Paulo"))
-
+# exemplos fixos (você pode comentar/remover)
 ligacoes = {
-    "gustavo": [(10, 11), (11, 0), (12, 0)],
-    "verificacao1": [(10, 30), (10, 34)]
+    "jordan": [(9,10),(9,15),(10,0),(11,0),(12,0)],
 }
 for nome, horarios in ligacoes.items():
     for hora, minuto in horarios:
         scheduler.add_job(
-            func=lambda nome=nome: ligar_para_verificacao_por_nome(nome),
-            trigger="cron",
-            hour=hora,
-            minute=minuto,
-            id=f"{nome}_{hora}_{minuto}",
-            replace_existing=True
+            func=lambda n=nome: ligar_para_verificacao_por_nome(n),
+            trigger="cron", hour=hora, minute=minuto,
+            id=f"{nome}_{hora}_{minuto}", replace_existing=True
         )
 
 scheduler.start()
 
+# -------------------------------------------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT",5000)), debug=True)
