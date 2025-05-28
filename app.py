@@ -1,6 +1,5 @@
 import os
 import json
-import html
 import phonenumbers
 from phonenumbers import NumberParseException, is_valid_number
 from flask import Flask, request, Response, jsonify, send_from_directory
@@ -8,16 +7,15 @@ from signalwire.rest import Client as SignalWireClient
 from signalwire.voice_response import VoiceResponse
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
-from pytz import timezone
 
 load_dotenv()
 app = Flask(__name__)
 
+# Variáveis do ambiente — configure corretamente no seu .env
 signalwire_project = os.getenv("SIGNALWIRE_PROJECT")
 signalwire_token = os.getenv("SIGNALWIRE_TOKEN")
-signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # exemplo: example.signalwire.com
-signalwire_number = os.getenv("SIGNALWIRE_NUMBER")
+signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # exemplo: example.signalwire.com (sem https://)
+signalwire_number = os.getenv("SIGNALWIRE_NUMBER")  # Seu número comprado no SignalWire, ex: +15017122661
 base_url = os.getenv("BASE_URL", "http://localhost:5000")
 
 client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space)
@@ -34,11 +32,25 @@ def save_contacts(data):
     with open(CONTACTS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def validar_numero(numero):
+    try:
+        parsed = phonenumbers.parse(numero, None)  # Usa None para permitir números internacionais
+        return is_valid_number(parsed)
+    except NumberParseException:
+        return False
+
+def _twiml_response(text, voice="alice"):
+    resp = VoiceResponse()
+    resp.say(text, voice=voice, language="pt-BR")
+    return Response(str(resp), mimetype="text/xml")
+
 @app.route("/add-contact", methods=["POST"])
 def add_contact():
     data = request.get_json()
     nome = data.get("nome", "").lower()
     telefone = data.get("telefone")
+    if not validar_numero(telefone):
+        return jsonify({"status": "erro", "mensagem": "Número inválido."}), 400
     contacts = load_contacts()
     contacts[nome] = telefone
     save_contacts(contacts)
@@ -53,8 +65,7 @@ def delete_contact():
         del contacts[nome]
         save_contacts(contacts)
         return jsonify({"status": "sucesso", "mensagem": f"{nome} removido com sucesso."})
-    else:
-        return jsonify({"status": "erro", "mensagem": f"{nome} não encontrado."})
+    return jsonify({"status": "erro", "mensagem": f"{nome} não encontrado."}), 404
 
 @app.route("/get-contacts")
 def get_contacts():
@@ -64,7 +75,64 @@ def get_contacts():
 def serve_painel():
     return send_from_directory(".", "painel-contatos.html")
 
-@app.route("/verifica-sinal", methods=["GET", "POST"])
+def ligar_para_verificacao(numero_destino):
+    if not validar_numero(numero_destino):
+        print(f"[ERRO] Número inválido: {numero_destino}")
+        return None
+
+    full_url = f"{base_url}/verifica-sinal?tentativa=1"
+    response = VoiceResponse()
+    response.say("Central de monitoramento?", language="pt-BR", voice="alice")
+    response.record(
+        action=full_url,
+        method="POST",
+        max_length=5,
+        play_beep=True,
+        timeout=5,
+        transcribe=True,
+        transcribe_callback=full_url,
+        trim="trim-silence",
+        recording_status_callback=full_url,
+        recording_status_callback_method="POST",
+        language="pt-BR"
+    )
+    try:
+        chamada = client.calls.create(
+            to=numero_destino,
+            from_=signalwire_number,
+            twiml=str(response)
+        )
+        print(f"Chamada criada para {numero_destino}, SID: {chamada.sid}")
+        return chamada.sid
+    except Exception as e:
+        print(f"Erro ao criar chamada para {numero_destino}: {e}")
+        return None
+
+def ligar_para_verificacao_por_nome(nome):
+    contatos = load_contacts()
+    numero = contatos.get(nome.lower())
+    if numero and validar_numero(numero):
+        return ligar_para_verificacao(numero)
+    print(f"[ERRO] Contato '{nome}' não encontrado ou número inválido.")
+    return None
+
+@app.route("/testar-verificacao/<nome>")
+def testar_verificacao(nome):
+    sid = ligar_para_verificacao_por_nome(nome)
+    if sid:
+        return f"Ligação de verificação para {nome} iniciada. SID: {sid}"
+    return f"Erro ao iniciar ligação para {nome}.", 400
+
+@app.route("/forcar_ligacao/<nome>", methods=["GET"])
+def forcar_ligacao(nome):
+    sid = ligar_para_verificacao_por_nome(nome)
+    if sid:
+        return jsonify({"status": "sucesso", "mensagem": f"Ligação forçada para {nome} iniciada.", "sid": sid})
+    else:
+        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado ou número inválido."}), 404
+
+# Rota para receber o resultado da gravação e reconhecimento (exemplo)
+@app.route("/verifica-sinal", methods=["POST"])
 def verifica_sinal():
     resposta = request.form.get("SpeechResult", "").lower()
     tentativa = int(request.args.get("tentativa", 1))
@@ -94,62 +162,13 @@ def verifica_sinal():
 
     contatos = load_contacts()
     numero_emergencia = contatos.get("emergencia")
-    numero_falhou = request.values.get("To", None)
-    nome_falhou = None
-    if numero_falhou:
-        for nome, tel in contatos.items():
-            if tel == numero_falhou:
-                nome_falhou = nome
-                break
-
     if numero_emergencia and validar_numero(numero_emergencia):
-        ligar_para_emergencia(
-            numero_destino=numero_emergencia,
-            origem_falha_numero=numero_falhou,
-            origem_falha_nome=nome_falhou
-        )
+        ligar_para_emergencia(numero_emergencia)
         return _twiml_response("Falha na confirmação. Chamando responsáveis.", voice="alice")
-    else:
-        return _twiml_response("Erro ao tentar contatar emergência.", voice="alice")
+    return _twiml_response("Erro ao tentar contatar emergência.", voice="alice")
 
-def ligar_para_verificacao(numero_destino):
-    full_url = f"{base_url}/verifica-sinal?tentativa=1"
-    response = VoiceResponse()
-    response.say("Central de monitoramento?", language="pt-BR", voice="alice")
-    response.record(
-        action=full_url,
-        method="POST",
-        max_length=5,
-        play_beep=True,
-        timeout=5,
-        transcribe=True,
-        transcribe_callback=full_url,
-        trim="trim-silence",
-        recording_status_callback=full_url,
-        recording_status_callback_method="POST",
-        language="pt-BR"
-    )
-    client.calls.create(
-        to=numero_destino,
-        from_=signalwire_number,
-        twiml=str(response)
-    )
-
-def validar_numero(numero):
-    try:
-        parsed = phonenumbers.parse(numero, "BR")
-        return is_valid_number(parsed)
-    except NumberParseException:
-        return False
-
-def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha_nome=None):
-    if origem_falha_nome:
-        mensagem = f"Alerta. {origem_falha_nome} não respondeu à verificação. Diga OK para confirmar."
-    elif origem_falha_numero:
-        mensagem = f"O número {origem_falha_numero} não respondeu à verificação. Diga OK para confirmar."
-    else:
-        mensagem = "Alguém não respondeu à verificação. Diga OK para confirmar."
-
+def ligar_para_emergencia(numero_destino):
+    mensagem = "Alerta. Não houve resposta à verificação. Diga OK para confirmar."
     full_url = f"{base_url}/verifica-emergencia?tentativa=1"
     response = VoiceResponse()
     response.say(mensagem, language="pt-BR", voice="alice")
@@ -166,11 +185,17 @@ def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha
         recording_status_callback_method="POST",
         language="pt-BR"
     )
-    client.calls.create(
-        to=numero_destino,
-        from_=signalwire_number,
-        twiml=str(response)
-    )
+    try:
+        chamada = client.calls.create(
+            to=numero_destino,
+            from_=signalwire_number,
+            twiml=str(response)
+        )
+        print(f"Chamada de emergência criada para {numero_destino}, SID: {chamada.sid}")
+        return chamada.sid
+    except Exception as e:
+        print(f"Erro ao criar chamada de emergência: {e}")
+        return None
 
 @app.route("/verifica-emergencia", methods=["POST"])
 def verifica_emergencia():
@@ -178,7 +203,7 @@ def verifica_emergencia():
     tentativa = int(request.args.get("tentativa", 1))
     confirmacoes = ["ok", "confirma", "entendido", "entendi", "obrigado", "valeu"]
 
-    if any(palavra in resposta for palavra in confirmacoes):
+    if any(p in resposta for p in confirmacoes):
         return _twiml_response("Confirmação recebida. Obrigado.", voice="alice")
 
     if tentativa < 3:
@@ -202,45 +227,10 @@ def verifica_emergencia():
 
     return _twiml_response("Nenhuma confirmação recebida. Encerrando a chamada.", voice="alice")
 
-@app.route("/testar-verificacao/<nome>")
-def testar_verificacao(nome):
-    ligar_para_verificacao_por_nome(nome)
-    return f"Ligação de verificação para {nome} iniciada."
-
-def ligar_para_verificacao_por_nome(nome):
-    contatos = load_contacts()
-    numero = contatos.get(nome.lower())
-    if numero and validar_numero(numero):
-        ligar_para_verificacao(numero)
-    else:
-        print(f"[ERRO] Contato '{nome}' não encontrado ou número inválido.")
-
-@app.route("/forcar_ligacao/<nome>", methods=["GET"])
-def forcar_ligacao(nome):
-    nome = nome.lower()
-    contatos = load_contacts()
-    numero = contatos.get(nome)
-    if numero and validar_numero(numero):
-        ligar_para_verificacao(numero)
-        return jsonify({"status": "sucesso", "mensagem": f"Ligação forçada para {nome} ({numero}) iniciada."})
-    else:
-        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado ou número inválido."})
-
-def _twiml_response(text, voice="alice"):
-    resp = VoiceResponse()
-    resp.say(text, voice=voice, language="pt-BR")
-    return Response(str(resp), mimetype="text/xml")
-
-def agendar_ligacoes():
-    contatos = load_contacts()
-    for nome, numero in contatos.items():
-        if nome.lower() != "emergencia" and validar_numero(numero):
-            ligar_para_verificacao(numero)
-
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 9, "minuto": 1},
-        {"nome": "jordan", "hora": 9, "minuto": 4},
+        {"nome": "jordan", "hora": 9, "minuto": 42},
+        {"nome": "jordan", "hora": 9, "minuto": 45},
     ]
     for item in agendamentos:
         job_id = f"{item['nome']}_{item['hora']:02d}_{item['minuto']:02d}"
@@ -252,9 +242,10 @@ def agendar_multiplas_ligacoes():
             id=job_id,
             replace_existing=True
         )
+        print(f"Agendamento criado: {job_id}")
 
 if __name__ == "__main__":
     agendar_multiplas_ligacoes()
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 #created by Jordanlvs 💼, all rights reserved ® 
