@@ -10,18 +10,21 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from pytz import timezone
- 
+
 load_dotenv()
 app = Flask(__name__)
 
 signalwire_project = os.getenv("SIGNALWIRE_PROJECT")
 signalwire_token = os.getenv("SIGNALWIRE_TOKEN")
 signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # exemplo: example.signalwire.com
-signalwire_number = os.getenv("SIGNALWIRE_NUMBER")  # Pode manter o nome da variável se for o mesmo número
+signalwire_number = os.getenv("SIGNALWIRE_NUMBER")
 client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space_url=signalwire_space)
 
 CONTACTS_FILE = "contacts.json"
 base_url = os.getenv("BASE_URL", "http://localhost:5000")
+
+# Criação do scheduler global antes do uso
+scheduler = BackgroundScheduler()
 
 def load_contacts():
     with open(CONTACTS_FILE, "r", encoding="utf-8") as f:
@@ -77,7 +80,6 @@ def verifica_sinal():
         print("[TENTATIVA FALHOU] Repetindo verificação...")
         resp = VoiceResponse()
 
-        # Usando <Record> para captura de voz, gravação e reconhecimento depois
         record_action_url = f"{base_url}/verifica-sinal?tentativa={tentativa + 1}"
         resp.say("Contra senha incorreta. Fale novamente.", language="pt-BR", voice="alice")
         resp.record(
@@ -242,6 +244,7 @@ def _twiml_response(text, voice="alice"):
     return Response(str(resp), mimetype="text/xml")
 
 def agendar_ligacoes():
+    print("Agendando ligações periódicas")
     contatos = load_contacts()
     for nome, numero in contatos.items():
         if nome.lower() != "emergencia" and validar_numero(numero):
@@ -249,8 +252,8 @@ def agendar_ligacoes():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 8, "minuto": 49},
-        {"nome": "jordan", "hora": 8, "minuto": 51},
+        {"nome": "jordan", "hora": 9, "minuto": 1},
+        {"nome": "jordan", "hora": 9, "minuto": 4},
     ]
 
     for item in agendamentos:
@@ -263,10 +266,6 @@ def agendar_multiplas_ligacoes():
             id=job_id,
             replace_existing=True
         )
-
-def agendar_ligacoes():
-    # outra função de agendamento
-    print("Agendando ligações periódicas")
 
 if __name__ == "__main__":
     agendar_multiplas_ligacoes()  # agenda os jobs
