@@ -156,12 +156,22 @@ def ligar_para_verificacao(numero_destino):
 
 def ligar_para_verificacao_por_nome(nome):
     print(f"[LIGAR_PARA_VERIFICACAO_POR_NOME] Ligando para o contato '{nome}'.")
+    
     contatos = load_contacts()
     numero = contatos.get(nome.lower())
-    if numero and validar_numero(numero):
-        return ligar_para_verificacao(numero)
-    print(f"[LIGAR_PARA_VERIFICACAO_POR_NOME] Contato '{nome}' não encontrado ou número inválido.")
-    return None
+
+    if not numero:
+        raise ValueError(f"Contato '{nome}' não encontrado.")
+
+    if not validar_numero(numero):
+        raise ValueError(f"Número '{numero}' do contato '{nome}' é inválido.")
+
+    sid = ligar_para_verificacao(numero)
+    
+    if not sid:
+        raise RuntimeError(f"A chamada para o número '{numero}' falhou (SID vazio).")
+    
+    return sid
 
 @app.route("/testar-verificacao/<nome>")
 def testar_verificacao(nome):
