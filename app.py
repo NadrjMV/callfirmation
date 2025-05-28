@@ -4,25 +4,21 @@ import html
 import phonenumbers
 from phonenumbers import NumberParseException, is_valid_number
 from flask import Flask, request, Response, jsonify, send_from_directory
+from signalwire.rest import Client as SignalWireClient
+from signalwire.voice_response import VoiceResponse, Gather
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from pytz import timezone
-from signalwire.rest import Client as SignalWireClient
-from twilio.twiml.voice_response import VoiceResponse, Gather  # SignalWire tmb usa TwiML
 
 load_dotenv()
 app = Flask(__name__)
 
-# SignalWire
-project_id = os.getenv("SIGNALWIRE_PROJECT")
-api_token = os.getenv("SIGNALWIRE_TOKEN")
-space_url = os.getenv("SIGNALWIRE_SPACE_URL")  # ex: sunshield.signalwire.com
-base_url = os.getenv("BASE_URL")
-signalwire_number = os.getenv("SIGNALWIRE_NUMBER")
-
-client = SignalWireClient(project_id, api_token)
-client.api.base_url = f"https://{space_url}"
+signalwire_project = os.getenv("SIGNALWIRE_PROJECT")
+signalwire_token = os.getenv("SIGNALWIRE_TOKEN")
+signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # exemplo: example.signalwire.com
+signalwire_number = os.getenv("SIGNALWIRE_NUMBER")  # Pode manter o nome da variável se for o mesmo número
+client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space_url=signalwire_space)
 
 CONTACTS_FILE = "contacts.json"
 
@@ -74,7 +70,7 @@ def verifica_sinal():
 
     if "protegido" in resposta:
         print("[SUCESSO] Palavra correta detectada.")
-        return _twiml_response("Entendido. Obrigado.", voice="br-PT-Wavenet-A")
+        return _twiml_response("Entendido. Obrigado.", voice="alice")
 
     if tentativa < 2:
         print("[TENTATIVA FALHOU] Repetindo verificação...")
@@ -82,12 +78,12 @@ def verifica_sinal():
         gather = Gather(
             input="speech",
             timeout=5,
-            speechTimeout="auto",
+            speech_timeout="auto",
             action=f"{base_url}/verifica-sinal?tentativa={tentativa + 1}",
             method="POST",
             language="pt-BR"
         )
-        gather.say("Contra senha incorreta. Fale novamente.", language="pt-BR", voice="br-PT-Wavenet-A")
+        gather.say("Contra senha incorreta. Fale novamente.", language="pt-BR", voice="alice")
         resp.append(gather)
         resp.redirect(f"{base_url}/verifica-sinal?tentativa={tentativa + 1}", method="POST")
         return Response(str(resp), mimetype="text/xml")
@@ -104,11 +100,20 @@ def verifica_sinal():
                 nome_falhou = nome
                 break
 
+    print(f"[DEBUG] Número que falhou: {numero_falhou}")
+    print(f"[DEBUG] Nome correspondente: {nome_falhou}")
+    print(f"[DEBUG] Número emergência: {numero_emergencia}")
+
     if numero_emergencia and validar_numero(numero_emergencia):
-        ligar_para_emergencia(numero_emergencia, numero_falhou, nome_falhou)
-        return _twiml_response("Falha na confirmação. Chamando responsáveis.", voice="br-PT-Wavenet-A")
+        ligar_para_emergencia(
+            numero_destino=numero_emergencia,
+            origem_falha_numero=numero_falhou,
+            origem_falha_nome=nome_falhou
+        )
+        return _twiml_response("Falha na confirmação. Chamando responsáveis.", voice="alice")
     else:
-        return _twiml_response("Erro ao tentar contatar emergência. Verifique os números cadastrados.", voice="br-PT-Wavenet-A")
+        print("[ERRO] Número de emergência não encontrado ou inválido.")
+        return _twiml_response("Erro ao tentar contatar emergência. Verifique os números cadastrados.", voice="alice")
 
 def ligar_para_verificacao(numero_destino):
     full_url = f"{base_url}/verifica-sinal?tentativa=1"
@@ -116,12 +121,12 @@ def ligar_para_verificacao(numero_destino):
     gather = Gather(
         input="speech",
         timeout=5,
-        speechTimeout="auto",
+        speech_timeout="auto",
         action=full_url,
         method="POST",
         language="pt-BR"
     )
-    gather.say("Central de monitoramento?", language="pt-BR", voice="br-PT-Wavenet-A")
+    gather.say("Central de monitoramento?", language="pt-BR", voice="alice")
     response.append(gather)
     response.redirect(full_url, method="POST")
 
@@ -140,23 +145,23 @@ def validar_numero(numero):
 
 def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha_nome=None):
     if origem_falha_nome:
-        mensagem = f"Alerta de verificação de segurança. {origem_falha_nome} não respondeu à verificação. Confirme dizendo OK ou Entendido."
+        mensagem = f"Alerta de verificação de segurança. {origem_falha_nome} não respondeu à verificação de segurança. Por favor, confirme dizendo OK ou Entendido."
     elif origem_falha_numero:
-        mensagem = f"O número {origem_falha_numero} não respondeu à verificação. Confirme dizendo OK ou Entendido."
+        mensagem = f"O número {origem_falha_numero} não respondeu à verificação de segurança. Por favor, confirme dizendo OK ou Entendido."
     else:
-        mensagem = "Alguém não respondeu à verificação de segurança. Confirme dizendo OK ou Entendido."
+        mensagem = "Alguém não respondeu à verificação de segurança. Por favor, confirme dizendo OK ou Entendido."
 
     full_url = f"{base_url}/verifica-emergencia?tentativa=1"
     response = VoiceResponse()
     gather = Gather(
         input="speech",
         timeout=5,
-        speechTimeout="auto",
+        speech_timeout="auto",
         action=full_url,
         method="POST",
         language="pt-BR"
     )
-    gather.say(mensagem, language="pt-BR", voice="br-PT-Wavenet-A")
+    gather.say(mensagem, language="pt-BR", voice="alice")
     response.append(gather)
     response.redirect(full_url, method="POST")
 
@@ -175,24 +180,27 @@ def verifica_emergencia():
     confirmacoes = ["ok", "confirma", "entendido", "entendi", "obrigado", "valeu"]
 
     if any(palavra in resposta for palavra in confirmacoes):
-        return _twiml_response("Confirmação recebida. Obrigado.", voice="br-PT-Wavenet-A")
+        print("Confirmação recebida do chefe.")
+        return _twiml_response("Confirmação recebida. Obrigado.", voice="alice")
 
     if tentativa < 3:
+        print("Sem confirmação. Repetindo mensagem...")
         resp = VoiceResponse()
         gather = Gather(
             input="speech",
             timeout=5,
-            speechTimeout="auto",
+            speech_timeout="auto",
             action=f"{base_url}/verifica-emergencia?tentativa={tentativa + 1}",
             method="POST",
             language="pt-BR"
         )
-        gather.say("Alerta de verificação de segurança. Confirme dizendo OK ou Entendido.", language="pt-BR", voice="br-PT-Wavenet-A")
+        gather.say("Alerta de verificação de segurança. Por favor, confirme dizendo OK ou Entendido.", language="pt-BR", voice="alice")
         resp.append(gather)
         resp.redirect(f"{base_url}/verifica-emergencia?tentativa={tentativa + 1}", method="POST")
         return Response(str(resp), mimetype="text/xml")
 
-    return _twiml_response("Nenhuma confirmação recebida. Encerrando a chamada.", voice="br-PT-Wavenet-A")
+    print("Nenhuma confirmação após múltiplas tentativas.")
+    return _twiml_response("Nenhuma confirmação recebida. Encerrando a chamada.", voice="alice")
 
 @app.route("/testar-verificacao/<nome>")
 def testar_verificacao(nome):
@@ -203,30 +211,17 @@ def ligar_para_verificacao_por_nome(nome):
     contatos = load_contacts()
     numero = contatos.get(nome.lower())
     if numero and validar_numero(numero):
+        print(f"[AGENDAMENTO] Ligando para {nome}: {numero}")
         ligar_para_verificacao(numero)
+    else:
+        print(f"[ERRO] Contato '{nome}' não encontrado ou inválido.")
 
-def _twiml_response(texto, voice="br-PT-Wavenet-A"):
+def _twiml_response(texto, voice="alice"):
     resp = VoiceResponse()
     resp.say(texto, language="pt-BR", voice=voice)
     return Response(str(resp), mimetype="text/xml")
 
 scheduler = BackgroundScheduler(timezone=timezone("America/Sao_Paulo"))
-
-@app.route("/forcar_ligacao/<nome>")
-def forcar_ligacao(nome):
-    ligar_para_verificacao_por_nome(nome)
-    return f"Ligação forçada para {nome}"
-
-@app.route("/test-env")
-def test_env():
-    return {
-        "PROJECT_ID": os.environ.get("PROJECT_ID"),
-        "API_TOKEN": os.environ.get("API_TOKEN"),
-        "PORT": os.environ.get("PORT", 5000)
-    }
-
-print("PROJECT_ID:", os.environ.get("PROJECT_ID"))
-print("API_TOKEN:", os.environ.get("API_TOKEN"))
 
 @app.route("/agendar-unica", methods=["POST"])
 def agendar_unica():
@@ -249,36 +244,28 @@ def agendar_unica():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": datetime.now().hour, "minuto": (datetime.now().minute + 1) % 60},
+        {"nome": "jordan", "hora": 8, "minuto": 27},
+        {"nome": "jordan", "hora": 8, "minuto": 30},
+        {"nome": "jordan", "hora": 8, "minuto": 35},
     ]
-    for ag in agendamentos:
-        scheduler.add_job(
-            func=lambda nome=ag["nome"]: ligar_para_verificacao_por_nome(nome),
-            trigger="cron",
-            hour=ag["hora"],
-            minute=ag["minuto"],
-            id=f"verificacao_{ag['nome']}",
-            replace_existing=True
-        )
 
-def agendar_ligacoes_fixas():
-    ligacoes = [
-        {"nome": "jordan", "hora": 11, "minuto": 40},
-    ]
-    for item in ligacoes:
+    for item in agendamentos:
+        job_id = f"{item['nome']}_{item['hora']:02d}_{item['minuto']:02d}"
         scheduler.add_job(
             func=lambda nome=item["nome"]: ligar_para_verificacao_por_nome(nome),
             trigger="cron",
             hour=item["hora"],
             minute=item["minuto"],
-            id=f"fixo_{item['nome']}",
+            id=job_id,
             replace_existing=True
         )
 
+# Ativa o agendamento na inicialização do app
+agendar_multiplas_ligacoes()
 scheduler.start()
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
 
 #created by Jordanlvs 💼, all rights reserved ® 
