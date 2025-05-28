@@ -137,11 +137,29 @@ def testar_verificacao(nome):
 
 @app.route("/forcar_ligacao/<nome>", methods=["GET"])
 def forcar_ligacao(nome):
-    sid = ligar_para_verificacao_por_nome(nome)
+    if not nome:
+        print("[ERRO] Nome do contato não foi fornecido na URL.")
+        return jsonify({"status": "erro", "mensagem": "Nome do contato é obrigatório."}), 400
+
+    print(f"[INFO] Requisição recebida para forçar ligação para: {nome}")
+    contatos = load_contacts()
+
+    if nome.lower() not in contatos:
+        print(f"[ERRO] Contato '{nome}' não encontrado na lista.")
+        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado."}), 404
+
+    numero = contatos[nome.lower()]
+    if not validar_numero(numero):
+        print(f"[ERRO] Número inválido para o contato '{nome}': {numero}")
+        return jsonify({"status": "erro", "mensagem": f"Número inválido para '{nome}'."}), 400
+
+    sid = ligar_para_verificacao(numero)
     if sid:
-        return jsonify({"status": "sucesso", "mensagem": f"Ligação forçada para {nome} iniciada.", "sid": sid})
+        print(f"[SUCESSO] Ligação forçada para {nome} iniciada. SID: {sid}")
+        return jsonify({"status": "sucesso", "mensagem": f"Ligação para {nome} iniciada com sucesso.", "sid": sid})
     else:
-        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado ou número inválido."}), 404
+        print(f"[ERRO] Falha ao iniciar ligação para {nome}.")
+        return jsonify({"status": "erro", "mensagem": f"Falha ao iniciar ligação para {nome}."}), 500
 
 @app.route("/verifica-sinal", methods=["POST"])
 def verifica_sinal():
