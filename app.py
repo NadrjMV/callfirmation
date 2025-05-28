@@ -10,11 +10,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
  
 load_dotenv()
 app = Flask(__name__)
-print(f"Project: {signalwire_project}")
-print(f"Token: {signalwire_token[:5]}...")  
-print(f"Space URL: {signalwire_space}")
-print(f"SignalWire Number: {signalwire_number}")
-print(f"Base URL: {base_url}")
 
 # Variáveis do ambiente — configure corretamente no seu .env
 signalwire_project = os.getenv("SIGNALWIRE_PROJECT")
@@ -22,6 +17,12 @@ signalwire_token = os.getenv("SIGNALWIRE_TOKEN")
 signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # ex: example.signalwire.com (sem https://)
 signalwire_number = os.getenv("SIGNALWIRE_NUMBER")  # seu número comprado no SignalWire, ex: +15017122661
 base_url = os.getenv("BASE_URL", "http://localhost:5000")
+
+print(f"Project: {signalwire_project}")
+print(f"Token: {signalwire_token[:5]}...")  
+print(f"Space URL: {signalwire_space}")
+print(f"SignalWire Number: {signalwire_number}")
+print(f"Base URL: {base_url}")
 
 client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space)
 
