@@ -251,4 +251,8 @@ def agendar_multiplas_ligacoes():
         )
         print(f"Agendamento criado para {item['nome']} às {item['hora']:02d}:{item['minuto']:02d}")
 
-# created by Jordanlvs 💼, all rights reserved ®
+if __name__ == "__main__":
+    agendar_multiplas_ligacoes()
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+# created by Jordanlvs 💼, all rights reserved ® 
