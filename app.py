@@ -266,6 +266,17 @@ def agendar_multiplas_ligacoes():
             id=job_id,
             replace_existing=True
         )
+        
+@app.route("/forcar_ligacao/<nome>", methods=["GET"])
+def forcar_ligacao(nome):
+    nome = nome.lower()
+    contatos = load_contacts()
+    numero = contatos.get(nome)
+    if numero and validar_numero(numero):
+        ligar_para_verificacao(numero)
+        return jsonify({"status": "sucesso", "mensagem": f"Ligação para {nome} ({numero}) iniciada."})
+    else:
+        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado ou número inválido."}), 404
 
 if __name__ == "__main__":
     agendar_multiplas_ligacoes()  # agenda os jobs
