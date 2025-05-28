@@ -5,7 +5,7 @@ import phonenumbers
 from phonenumbers import NumberParseException, is_valid_number
 from flask import Flask, request, Response, jsonify, send_from_directory
 from signalwire.rest import Client as SignalWireClient
-from signalwire.voice_response import VoiceResponse, Gather
+from signalwire.voice_response import VoiceResponse, Record, Speak
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
@@ -21,6 +21,7 @@ signalwire_number = os.getenv("SIGNALWIRE_NUMBER")  # Pode manter o nome da vari
 client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space_url=signalwire_space)
 
 CONTACTS_FILE = "contacts.json"
+base_url = os.getenv("BASE_URL", "http://localhost:5000")
 
 def load_contacts():
     with open(CONTACTS_FILE, "r", encoding="utf-8") as f:
@@ -75,17 +76,23 @@ def verifica_sinal():
     if tentativa < 2:
         print("[TENTATIVA FALHOU] Repetindo verificação...")
         resp = VoiceResponse()
-        gather = Gather(
-            input="speech",
-            timeout=5,
-            speech_timeout="auto",
-            action=f"{base_url}/verifica-sinal?tentativa={tentativa + 1}",
+
+        # Usando <Record> para captura de voz, gravação e reconhecimento depois
+        record_action_url = f"{base_url}/verifica-sinal?tentativa={tentativa + 1}"
+        resp.say("Contra senha incorreta. Fale novamente.", language="pt-BR", voice="alice")
+        resp.record(
+            action=record_action_url,
             method="POST",
+            max_length=5,
+            play_beep=True,
+            timeout=5,
+            transcribe=True,
+            transcribe_callback=record_action_url,
+            trim="trim-silence",
+            recording_status_callback=record_action_url,
+            recording_status_callback_method="POST",
             language="pt-BR"
         )
-        gather.say("Contra senha incorreta. Fale novamente.", language="pt-BR", voice="alice")
-        resp.append(gather)
-        resp.redirect(f"{base_url}/verifica-sinal?tentativa={tentativa + 1}", method="POST")
         return Response(str(resp), mimetype="text/xml")
 
     print("[FALHA TOTAL] Chamando número de emergência...")
@@ -118,17 +125,21 @@ def verifica_sinal():
 def ligar_para_verificacao(numero_destino):
     full_url = f"{base_url}/verifica-sinal?tentativa=1"
     response = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=5,
-        speech_timeout="auto",
+
+    response.say("Central de monitoramento?", language="pt-BR", voice="alice")
+    response.record(
         action=full_url,
         method="POST",
+        max_length=5,
+        play_beep=True,
+        timeout=5,
+        transcribe=True,
+        transcribe_callback=full_url,
+        trim="trim-silence",
+        recording_status_callback=full_url,
+        recording_status_callback_method="POST",
         language="pt-BR"
     )
-    gather.say("Central de monitoramento?", language="pt-BR", voice="alice")
-    response.append(gather)
-    response.redirect(full_url, method="POST")
 
     client.calls.create(
         to=numero_destino,
@@ -153,17 +164,21 @@ def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha
 
     full_url = f"{base_url}/verifica-emergencia?tentativa=1"
     response = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=5,
-        speech_timeout="auto",
+
+    response.say(mensagem, language="pt-BR", voice="alice")
+    response.record(
         action=full_url,
         method="POST",
+        max_length=5,
+        play_beep=True,
+        timeout=5,
+        transcribe=True,
+        transcribe_callback=full_url,
+        trim="trim-silence",
+        recording_status_callback=full_url,
+        recording_status_callback_method="POST",
         language="pt-BR"
     )
-    gather.say(mensagem, language="pt-BR", voice="alice")
-    response.append(gather)
-    response.redirect(full_url, method="POST")
 
     client.calls.create(
         to=numero_destino,
@@ -186,17 +201,22 @@ def verifica_emergencia():
     if tentativa < 3:
         print("Sem confirmação. Repetindo mensagem...")
         resp = VoiceResponse()
-        gather = Gather(
-            input="speech",
-            timeout=5,
-            speech_timeout="auto",
-            action=f"{base_url}/verifica-emergencia?tentativa={tentativa + 1}",
+
+        resp.say("Alerta de verificação de segurança. Por favor, confirme dizendo OK ou Entendido.", language="pt-BR", voice="alice")
+        full_url = f"{base_url}/verifica-emergencia?tentativa={tentativa + 1}"
+        resp.record(
+            action=full_url,
             method="POST",
+            max_length=5,
+            play_beep=True,
+            timeout=5,
+            transcribe=True,
+            transcribe_callback=full_url,
+            trim="trim-silence",
+            recording_status_callback=full_url,
+            recording_status_callback_method="POST",
             language="pt-BR"
         )
-        gather.say("Alerta de verificação de segurança. Por favor, confirme dizendo OK ou Entendido.", language="pt-BR", voice="alice")
-        resp.append(gather)
-        resp.redirect(f"{base_url}/verifica-emergencia?tentativa={tentativa + 1}", method="POST")
         return Response(str(resp), mimetype="text/xml")
 
     print("Nenhuma confirmação após múltiplas tentativas.")
@@ -244,9 +264,8 @@ def agendar_unica():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 8, "minuto": 27},
-        {"nome": "jordan", "hora": 8, "minuto": 30},
-        {"nome": "jordan", "hora": 8, "minuto": 35},
+        {"nome": "jordan", "hora": 8, "minuto": 40},
+        {"nome": "jordan", "hora": 8, "minuto": 43},
     ]
 
     for item in agendamentos:
@@ -268,4 +287,4 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
 
-#created by Jordanlvs 💼, all rights reserved ® 
+#created by Jordanlvs 💼, all rights reserved ®
