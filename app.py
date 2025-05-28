@@ -1,6 +1,7 @@
 import os
 import json
 import phonenumbers
+import traceback
 from phonenumbers import NumberParseException, is_valid_number
 from flask import Flask, request, Response, jsonify, send_from_directory
 from signalwire.rest import Client as SignalWireClient
@@ -174,29 +175,22 @@ def testar_verificacao(nome):
 
 @app.route("/forcar_ligacao/<nome>", methods=["GET"])
 def forcar_ligacao(nome):
-    if not nome:
-        print("[FORCAR_LIGACAO] Erro: Nome do contato não fornecido na URL.")
-        return jsonify({"status": "erro", "mensagem": "Nome do contato é obrigatório."}), 400
-
-    print(f"[FORCAR_LIGACAO] Requisição para forçar ligação para: {nome}")
-    contatos = load_contacts()
-
-    if nome.lower() not in contatos:
-        print(f"[FORCAR_LIGACAO] Contato '{nome}' não encontrado.")
-        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado."}), 404
-
-    numero = contatos[nome.lower()]
-    if not validar_numero(numero):
-        print(f"[FORCAR_LIGACAO] Número inválido para contato '{nome}': {numero}")
-        return jsonify({"status": "erro", "mensagem": f"Número inválido para '{nome}'."}), 400
-
-    sid = ligar_para_verificacao(numero)
-    if sid:
-        print(f"[FORCAR_LIGACAO] Ligação forçada iniciada para {nome}. SID: {sid}")
-        return jsonify({"status": "sucesso", "mensagem": f"Ligação para {nome} iniciada com sucesso.", "sid": sid})
-    else:
-        print(f"[FORCAR_LIGACAO] Falha ao iniciar ligação para {nome}.")
-        return jsonify({"status": "erro", "mensagem": f"Falha ao iniciar ligação para {nome}."}), 500
+    try:
+        print(f"Tentando iniciar ligação para: {nome}")
+        sid = ligar_para_verificacao_por_nome(nome)  # sua função
+        if sid:
+            return jsonify({"mensagem": f"Ligação iniciada para {nome}.", "status": "ok"})
+        else:
+            return jsonify({"mensagem": f"Falha ao iniciar ligação para {nome}.", "status": "erro"}), 500
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(tb)
+        return jsonify({
+            "mensagem": "Erro interno do servidor.",
+            "status": "erro",
+            "detalhes": str(e),
+            "traceback": tb
+        }), 500
 
 @app.route("/verifica-sinal", methods=["POST"])
 def verifica_sinal():
