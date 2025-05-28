@@ -25,11 +25,14 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 
 def load_contacts():
-    if not os.path.exists(CONTACTS_FILE):
-        with open(CONTACTS_FILE, "w", encoding="utf-8") as f:
-            json.dump({}, f, ensure_ascii=False, indent=2)
-    with open(CONTACTS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(CONTACTS_FILE, "r") as f:
+            contatos = json.load(f)
+        print("Contatos carregados com sucesso.")
+        return contatos
+    except Exception as e:
+        print(f"Erro ao carregar contatos: {e}")
+        return {}
 
 def save_contacts(data):
     with open(CONTACTS_FILE, "w", encoding="utf-8") as f:
@@ -37,7 +40,7 @@ def save_contacts(data):
 
 def validar_numero(numero):
     try:
-        parsed = phonenumbers.parse(numero, None)  # Usa None para permitir números internacionais
+        parsed = phonenumbers.parse(numero, None)
         return is_valid_number(parsed)
     except NumberParseException:
         return False
@@ -233,8 +236,8 @@ def verifica_emergencia():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 9, "minuto": 55},
-        {"nome": "jordan", "hora": 9, "minuto": 58},
+        {"nome": "jordan", "hora": 10, "minuto": 7},
+        {"nome": "jordan", "hora": 10, "minuto": 10},
     ]
     for item in agendamentos:
         job_id = f"{item['nome']}_{item['hora']:02d}_{item['minuto']:02d}"
@@ -246,14 +249,6 @@ def agendar_multiplas_ligacoes():
             id=job_id,
             replace_existing=True
         )
-        print(f"Agendamento criado: {job_id}")
-
-@app.route("/get-contacts")
-def listar_contatos():
-    return jsonify(load_contacts())
-
-if __name__ == "__main__":
-    agendar_multiplas_ligacoes()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+        print(f"Agendamento
 
 # created by Jordanlvs 💼, all rights reserved ®
