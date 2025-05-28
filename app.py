@@ -318,6 +318,25 @@ def verifica_emergencia():
     print("[VERIFICA_EMERGENCIA] Falha na confirmação da emergência.")
     return _twiml_response("Falha na confirmação. Encerrando ligação.", voice="alice")
 
+@app.route("/twiml-script")
+def twiml_script():
+    resp = VoiceResponse()
+    resp.say("Central de monitoramento?", voice="alice", language="pt-BR")
+    resp.record(
+        action=f"{base_url}/verifica-sinal?tentativa=1",
+        method="POST",
+        max_length=5,
+        play_beep=True,
+        timeout=5,
+        transcribe=True,
+        transcribe_callback=f"{base_url}/verifica-sinal?tentativa=1",
+        trim="trim-silence",
+        recording_status_callback=f"{base_url}/verifica-sinal?tentativa=1",
+        recording_status_callback_method="POST",
+        language="pt-BR"
+    )
+    return Response(str(resp), mimetype="text/xml")
+
 if __name__ == "__main__":
     print("[APP] Iniciando servidor Flask...")
     app.run(host="0.0.0.0", port=5000, debug=True)
