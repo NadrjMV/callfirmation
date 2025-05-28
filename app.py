@@ -149,7 +149,7 @@ def ligar_para_verificacao(numero_destino):
         chamada = client.calls.create(
             to=numero_destino,
             from_=signalwire_number,
-            twiml=str(response)
+            url=f"{base_url}/twiml-script"
         )
 
         if not chamada or not chamada.sid:
@@ -271,32 +271,34 @@ def ligar_para_emergencia(numero_destino):
         recording_status_callback_method="POST",
         language="pt-BR"
     )
-    try:
-        chamada = client.calls.create(
-            to=numero_destino,
-            from_=signalwire_number,
-            twiml=str(response)
-        )
-        print(f"[LIGAR_PARA_EMERGENCIA] Chamada de emergência criada, SID: {chamada.sid}")
-        return chamada.sid
-    except Exception as e:
-        print(f"[LIGAR_PARA_EMERGENCIA] Erro ao criar chamada de emergência: {e}")
-        return None
+
+    chamada = client.calls.create(
+        to=numero_destino,
+        from_=signalwire_number,
+        twiml=str(response)
+    )
+
+    if not chamada or not chamada.sid:
+        print(f"[LIGAR_PARA_EMERGENCIA] Chamada retornou SID inválido: {chamada}")
+        raise RuntimeError("Erro ao iniciar chamada de emergência.")
+
+    print(f"[LIGAR_PARA_EMERGENCIA] Chamada de emergência iniciada. SID: {chamada.sid}")
+    return chamada.sid
 
 @app.route("/verifica-emergencia", methods=["POST"])
 def verifica_emergencia():
     resposta = request.form.get("SpeechResult", "").lower()
     tentativa = int(request.args.get("tentativa", 1))
-    print(f"[VERIFICA_EMERGENCIA] Resposta emergência - Tentativa {tentativa}: '{resposta}'")
+    print(f"[VERIFICA_EMERGENCIA] Resposta recebida - Tentativa {tentativa}: '{resposta}'")
 
     if "ok" in resposta:
-        print("[VERIFICA_EMERGENCIA] Emergência confirmada com OK. Finalizando.")
+        print("[VERIFICA_EMERGENCIA] Palavra-chave 'OK' detectada. Emergência confirmada.")
         return _twiml_response("Confirmação recebida. Obrigado.", voice="alice")
 
     if tentativa < 2:
         resp = VoiceResponse()
         record_action_url = f"{base_url}/verifica-emergencia?tentativa={tentativa + 1}"
-        resp.say("Não entendi. Por favor, diga OK para confirmar.", language="pt-BR", voice="alice")
+        resp.say("Não entendi. Por favor diga OK para confirmar.", language="pt-BR", voice="alice")
         resp.record(
             action=record_action_url,
             method="POST",
@@ -313,15 +315,8 @@ def verifica_emergencia():
         print(f"[VERIFICA_EMERGENCIA] Tentativa {tentativa} falhou, solicitando nova gravação.")
         return Response(str(resp), mimetype="text/xml")
 
-    print("[VERIFICA_EMERGENCIA] Não foi possível confirmar emergência após tentativas.")
-    return _twiml_response("Não foi possível confirmar a emergência. Encerrando.", voice="alice")
-
-# Scheduler exemplo para teste de chamadas periódicas, opcional
-def job_teste():
-    print("[SCHEDULER] Executando job de teste.")
-    ligar_para_verificacao_por_nome("emergencia")
-
-scheduler.add_job(job_teste, 'interval', minutes=60)
+    print("[VERIFICA_EMERGENCIA] Falha na confirmação da emergência.")
+    return _twiml_response("Falha na confirmação. Encerrando ligação.", voice="alice")
 
 if __name__ == "__main__":
     print("[APP] Iniciando servidor Flask...")
