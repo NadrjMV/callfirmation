@@ -29,7 +29,7 @@ client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space
 CONTACTS_FILE = "contacts.json"
 scheduler = BackgroundScheduler()
 scheduler.start()
-
+ 
 def load_contacts():
     try:
         with open(CONTACTS_FILE, "r") as f:
