@@ -240,8 +240,8 @@ def verifica_emergencia():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 10, "minuto": 7},
-        {"nome": "jordan", "hora": 10, "minuto": 10},
+        {"nome": "jordan", "hora": 10, "minuto": 34},
+        {"nome": "jordan", "hora": 10, "minuto": 37},
     ]
     for item in agendamentos:
         job_id = f"{item['nome']}_{item['hora']:02d}_{item['minuto']:02d}"
@@ -259,4 +259,4 @@ if __name__ == "__main__":
     agendar_multiplas_ligacoes()
     app.run(host="0.0.0.0", port=5000, debug=True)
 
-# created by Jordanlvs 💼, all rights reserved ® 
+# created by Jordanlvs 💼, all rights reserved ®
