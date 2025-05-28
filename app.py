@@ -122,37 +122,47 @@ def serve_painel():
 
 def ligar_para_verificacao(numero_destino):
     print(f"[LIGAR_PARA_VERIFICACAO] Tentando ligar para: {numero_destino}")
+    
     if not validar_numero(numero_destino):
         print(f"[LIGAR_PARA_VERIFICACAO] Número inválido: {numero_destino}")
         return None
 
     full_url = f"{base_url}/verifica-sinal?tentativa=1"
-    response = VoiceResponse()
-    response.say("Central de monitoramento?", language="pt-BR", voice="alice")
-    response.record(
-        action=full_url,
-        method="POST",
-        max_length=5,
-        play_beep=True,
-        timeout=5,
-        transcribe=True,
-        transcribe_callback=full_url,
-        trim="trim-silence",
-        recording_status_callback=full_url,
-        recording_status_callback_method="POST",
-        language="pt-BR"
-    )
+
     try:
+        response = VoiceResponse()
+        response.say("Central de monitoramento?", language="pt-BR", voice="alice")
+        response.record(
+            action=full_url,
+            method="POST",
+            max_length=5,
+            play_beep=True,
+            timeout=5,
+            transcribe=True,
+            transcribe_callback=full_url,
+            trim="trim-silence",
+            recording_status_callback=full_url,
+            recording_status_callback_method="POST",
+            language="pt-BR"
+        )
+
         chamada = client.calls.create(
             to=numero_destino,
             from_=signalwire_number,
             twiml=str(response)
         )
-        print(f"[LIGAR_PARA_VERIFICACAO] Chamada criada para {numero_destino}, SID: {chamada.sid}")
+
+        if not chamada or not chamada.sid:
+            print(f"[LIGAR_PARA_VERIFICACAO] Chamada retornou SID vazio ou nulo: {chamada}")
+            raise RuntimeError(f"A chamada foi criada, mas retornou um SID inválido. Resposta: {chamada}")
+
+        print(f"[LIGAR_PARA_VERIFICACAO] Chamada criada com sucesso. SID: {chamada.sid}")
         return chamada.sid
+
     except Exception as e:
         print(f"[LIGAR_PARA_VERIFICACAO] Erro ao criar chamada para {numero_destino}: {e}")
-        return None
+        traceback.print_exc()
+        raise RuntimeError(f"Erro ao iniciar chamada para {numero_destino}: {str(e)}")
 
 def ligar_para_verificacao_por_nome(nome):
     print(f"[LIGAR_PARA_VERIFICACAO_POR_NOME] Ligando para o contato '{nome}'.")
