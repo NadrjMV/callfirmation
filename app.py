@@ -5,7 +5,7 @@ import phonenumbers
 from phonenumbers import NumberParseException, is_valid_number
 from flask import Flask, request, Response, jsonify, send_from_directory
 from signalwire.rest import Client as SignalWireClient
-from signalwire.voice_response import VoiceResponse, Record, Speak
+from signalwire.voice_response import VoiceResponse
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
@@ -234,38 +234,23 @@ def ligar_para_verificacao_por_nome(nome):
         print(f"[AGENDAMENTO] Ligando para {nome}: {numero}")
         ligar_para_verificacao(numero)
     else:
-        print(f"[ERRO] Contato '{nome}' não encontrado ou inválido.")
+        print(f"[ERRO] Contato '{nome}' não encontrado ou número inválido.")
 
-def _twiml_response(texto, voice="alice"):
+def _twiml_response(text, voice="alice"):
     resp = VoiceResponse()
-    resp.say(texto, language="pt-BR", voice=voice)
+    resp.say(text, voice=voice, language="pt-BR")
     return Response(str(resp), mimetype="text/xml")
 
-scheduler = BackgroundScheduler(timezone=timezone("America/Sao_Paulo"))
-
-@app.route("/agendar-unica", methods=["POST"])
-def agendar_unica():
-    data = request.get_json()
-    nome = data.get("nome")
-    hora = int(data.get("hora"))
-    minuto = int(data.get("minuto"))
-
-    job_id = f"teste_{nome}_{hora}_{minuto}"
-    scheduler.add_job(
-        func=lambda: ligar_para_verificacao_por_nome(nome),
-        trigger="cron",
-        hour=hora,
-        minute=minuto,
-        id=job_id,
-        replace_existing=True
-    )
-
-    return jsonify({"status": "ok", "mensagem": f"Ligação para {nome} agendada às {hora:02d}:{minuto:02d}"})
+def agendar_ligacoes():
+    contatos = load_contacts()
+    for nome, numero in contatos.items():
+        if nome.lower() != "emergencia" and validar_numero(numero):
+            ligar_para_verificacao(numero)
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 8, "minuto": 40},
-        {"nome": "jordan", "hora": 8, "minuto": 43},
+        {"nome": "jordan", "hora": 8, "minuto": 44},
+        {"nome": "jordan", "hora": 8, "minuto": 45},
     ]
 
     for item in agendamentos:
@@ -284,7 +269,9 @@ agendar_multiplas_ligacoes()
 scheduler.start()
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(agendar_ligacoes, 'interval', hours=24)  # Ajuste a frequência como desejar
+    scheduler.start()
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
-#created by Jordanlvs 💼, all rights reserved ®
+#created by Jordanlvs 💼, all rights reserved ® 
