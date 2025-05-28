@@ -248,6 +248,10 @@ def agendar_multiplas_ligacoes():
         )
         print(f"Agendamento criado: {job_id}")
 
+@app.route("/get-contacts")
+def get_contacts():
+    return jsonify(load_contacts())
+
 if __name__ == "__main__":
     agendar_multiplas_ligacoes()
     app.run(host="0.0.0.0", port=5000, debug=True)
