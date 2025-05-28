@@ -79,6 +79,10 @@ def delete_contact():
 def get_contacts():
     return jsonify(load_contacts())
 
+@app.route("/listar_contatos")
+def listar_contatos():
+    return jsonify(load_contacts())
+
 @app.route("/painel-contatos.html")
 def serve_painel():
     return send_from_directory(".", "painel-contatos.html")
