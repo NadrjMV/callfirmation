@@ -249,7 +249,7 @@ def agendar_multiplas_ligacoes():
         print(f"Agendamento criado: {job_id}")
 
 @app.route("/get-contacts")
-def get_contacts():
+def listar_contatos():
     return jsonify(load_contacts())
 
 if __name__ == "__main__":
