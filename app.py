@@ -14,8 +14,8 @@ app = Flask(__name__)
 # Variáveis do ambiente — configure corretamente no seu .env
 signalwire_project = os.getenv("SIGNALWIRE_PROJECT")
 signalwire_token = os.getenv("SIGNALWIRE_TOKEN")
-signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # exemplo: example.signalwire.com (sem https://)
-signalwire_number = os.getenv("SIGNALWIRE_NUMBER")  # Seu número comprado no SignalWire, ex: +15017122661
+signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # ex: example.signalwire.com (sem https://)
+signalwire_number = os.getenv("SIGNALWIRE_NUMBER")  # seu número comprado no SignalWire, ex: +15017122661
 base_url = os.getenv("BASE_URL", "http://localhost:5000")
 
 client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space)
@@ -25,6 +25,9 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 
 def load_contacts():
+    if not os.path.exists(CONTACTS_FILE):
+        with open(CONTACTS_FILE, "w", encoding="utf-8") as f:
+            json.dump({}, f, ensure_ascii=False, indent=2)
     with open(CONTACTS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -47,8 +50,10 @@ def _twiml_response(text, voice="alice"):
 @app.route("/add-contact", methods=["POST"])
 def add_contact():
     data = request.get_json()
-    nome = data.get("nome", "").lower()
+    nome = data.get("nome", "").lower().strip()
     telefone = data.get("telefone")
+    if not nome or not telefone:
+        return jsonify({"status": "erro", "mensagem": "Nome e telefone são obrigatórios."}), 400
     if not validar_numero(telefone):
         return jsonify({"status": "erro", "mensagem": "Número inválido."}), 400
     contacts = load_contacts()
@@ -59,7 +64,7 @@ def add_contact():
 @app.route("/delete-contact", methods=["POST"])
 def delete_contact():
     data = request.get_json()
-    nome = data.get("nome", "").lower()
+    nome = data.get("nome", "").lower().strip()
     contacts = load_contacts()
     if nome in contacts:
         del contacts[nome]
@@ -131,7 +136,6 @@ def forcar_ligacao(nome):
     else:
         return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado ou número inválido."}), 404
 
-# Rota para receber o resultado da gravação e reconhecimento (exemplo)
 @app.route("/verifica-sinal", methods=["POST"])
 def verifica_sinal():
     resposta = request.form.get("SpeechResult", "").lower()
@@ -229,8 +233,8 @@ def verifica_emergencia():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 9, "minuto": 42},
-        {"nome": "jordan", "hora": 9, "minuto": 45},
+        {"nome": "jordan", "hora": 9, "minuto": 55},
+        {"nome": "jordan", "hora": 9, "minuto": 58},
     ]
     for item in agendamentos:
         job_id = f"{item['nome']}_{item['hora']:02d}_{item['minuto']:02d}"
@@ -248,4 +252,4 @@ if __name__ == "__main__":
     agendar_multiplas_ligacoes()
     app.run(host="0.0.0.0", port=5000, debug=True)
 
-#created by Jordanlvs 💼, all rights reserved ® 
+# created by Jordanlvs 💼, all rights reserved ®
