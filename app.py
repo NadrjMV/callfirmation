@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from pytz import timezone
-
+ 
 load_dotenv()
 app = Flask(__name__)
 
