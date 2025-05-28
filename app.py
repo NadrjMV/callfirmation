@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from pytz import timezone
-from twilio.rest import Client
 
 load_dotenv()
 app = Flask(__name__)
@@ -19,13 +18,13 @@ signalwire_project = os.getenv("SIGNALWIRE_PROJECT")
 signalwire_token = os.getenv("SIGNALWIRE_TOKEN")
 signalwire_space = os.getenv("SIGNALWIRE_SPACE_URL")  # exemplo: example.signalwire.com
 signalwire_number = os.getenv("SIGNALWIRE_NUMBER")
-client = Client(signalwire_project, signalwire_token, region=signalwire_space, edge='us')
-
-CONTACTS_FILE = "contacts.json"
 base_url = os.getenv("BASE_URL", "http://localhost:5000")
 
-# Criação do scheduler global antes do uso
+client = SignalWireClient(signalwire_project, signalwire_token, signalwire_space)
+
+CONTACTS_FILE = "contacts.json"
 scheduler = BackgroundScheduler()
+scheduler.start()
 
 def load_contacts():
     with open(CONTACTS_FILE, "r", encoding="utf-8") as f:
@@ -40,7 +39,6 @@ def add_contact():
     data = request.get_json()
     nome = data.get("nome", "").lower()
     telefone = data.get("telefone")
-
     contacts = load_contacts()
     contacts[nome] = telefone
     save_contacts(contacts)
@@ -50,7 +48,6 @@ def add_contact():
 def delete_contact():
     data = request.get_json()
     nome = data.get("nome", "").lower()
-
     contacts = load_contacts()
     if nome in contacts:
         del contacts[nome]
@@ -74,13 +71,10 @@ def verifica_sinal():
     print(f"[RESPOSTA - Tentativa {tentativa}] {resposta}")
 
     if "protegido" in resposta:
-        print("[SUCESSO] Palavra correta detectada.")
         return _twiml_response("Entendido. Obrigado.", voice="alice")
 
     if tentativa < 2:
-        print("[TENTATIVA FALHOU] Repetindo verificação...")
         resp = VoiceResponse()
-
         record_action_url = f"{base_url}/verifica-sinal?tentativa={tentativa + 1}"
         resp.say("Contra senha incorreta. Fale novamente.", language="pt-BR", voice="alice")
         resp.record(
@@ -98,10 +92,8 @@ def verifica_sinal():
         )
         return Response(str(resp), mimetype="text/xml")
 
-    print("[FALHA TOTAL] Chamando número de emergência...")
     contatos = load_contacts()
     numero_emergencia = contatos.get("emergencia")
-
     numero_falhou = request.values.get("To", None)
     nome_falhou = None
     if numero_falhou:
@@ -109,10 +101,6 @@ def verifica_sinal():
             if tel == numero_falhou:
                 nome_falhou = nome
                 break
-
-    print(f"[DEBUG] Número que falhou: {numero_falhou}")
-    print(f"[DEBUG] Nome correspondente: {nome_falhou}")
-    print(f"[DEBUG] Número emergência: {numero_emergencia}")
 
     if numero_emergencia and validar_numero(numero_emergencia):
         ligar_para_emergencia(
@@ -122,13 +110,11 @@ def verifica_sinal():
         )
         return _twiml_response("Falha na confirmação. Chamando responsáveis.", voice="alice")
     else:
-        print("[ERRO] Número de emergência não encontrado ou inválido.")
-        return _twiml_response("Erro ao tentar contatar emergência. Verifique os números cadastrados.", voice="alice")
+        return _twiml_response("Erro ao tentar contatar emergência.", voice="alice")
 
 def ligar_para_verificacao(numero_destino):
     full_url = f"{base_url}/verifica-sinal?tentativa=1"
     response = VoiceResponse()
-
     response.say("Central de monitoramento?", language="pt-BR", voice="alice")
     response.record(
         action=full_url,
@@ -143,7 +129,6 @@ def ligar_para_verificacao(numero_destino):
         recording_status_callback_method="POST",
         language="pt-BR"
     )
-
     client.calls.create(
         to=numero_destino,
         from_=signalwire_number,
@@ -159,15 +144,14 @@ def validar_numero(numero):
 
 def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha_nome=None):
     if origem_falha_nome:
-        mensagem = f"Alerta de verificação de segurança. {origem_falha_nome} não respondeu à verificação de segurança. Por favor, confirme dizendo OK ou Entendido."
+        mensagem = f"Alerta. {origem_falha_nome} não respondeu à verificação. Diga OK para confirmar."
     elif origem_falha_numero:
-        mensagem = f"O número {origem_falha_numero} não respondeu à verificação de segurança. Por favor, confirme dizendo OK ou Entendido."
+        mensagem = f"O número {origem_falha_numero} não respondeu à verificação. Diga OK para confirmar."
     else:
-        mensagem = "Alguém não respondeu à verificação de segurança. Por favor, confirme dizendo OK ou Entendido."
+        mensagem = "Alguém não respondeu à verificação. Diga OK para confirmar."
 
     full_url = f"{base_url}/verifica-emergencia?tentativa=1"
     response = VoiceResponse()
-
     response.say(mensagem, language="pt-BR", voice="alice")
     response.record(
         action=full_url,
@@ -182,7 +166,6 @@ def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha
         recording_status_callback_method="POST",
         language="pt-BR"
     )
-
     client.calls.create(
         to=numero_destino,
         from_=signalwire_number,
@@ -193,19 +176,14 @@ def ligar_para_emergencia(numero_destino, origem_falha_numero=None, origem_falha
 def verifica_emergencia():
     resposta = request.form.get("SpeechResult", "").lower()
     tentativa = int(request.args.get("tentativa", 1))
-    print(f"[RESPOSTA EMERGENCIA - Tentativa {tentativa}] {resposta}")
-
     confirmacoes = ["ok", "confirma", "entendido", "entendi", "obrigado", "valeu"]
 
     if any(palavra in resposta for palavra in confirmacoes):
-        print("Confirmação recebida do chefe.")
         return _twiml_response("Confirmação recebida. Obrigado.", voice="alice")
 
     if tentativa < 3:
-        print("Sem confirmação. Repetindo mensagem...")
         resp = VoiceResponse()
-
-        resp.say("Alerta de verificação de segurança. Por favor, confirme dizendo OK ou Entendido.", language="pt-BR", voice="alice")
+        resp.say("Alerta. Por favor, confirme dizendo OK ou Entendido.", language="pt-BR", voice="alice")
         full_url = f"{base_url}/verifica-emergencia?tentativa={tentativa + 1}"
         resp.record(
             action=full_url,
@@ -222,7 +200,6 @@ def verifica_emergencia():
         )
         return Response(str(resp), mimetype="text/xml")
 
-    print("Nenhuma confirmação após múltiplas tentativas.")
     return _twiml_response("Nenhuma confirmação recebida. Encerrando a chamada.", voice="alice")
 
 @app.route("/testar-verificacao/<nome>")
@@ -234,10 +211,20 @@ def ligar_para_verificacao_por_nome(nome):
     contatos = load_contacts()
     numero = contatos.get(nome.lower())
     if numero and validar_numero(numero):
-        print(f"[AGENDAMENTO] Ligando para {nome}: {numero}")
         ligar_para_verificacao(numero)
     else:
         print(f"[ERRO] Contato '{nome}' não encontrado ou número inválido.")
+
+@app.route("/forcar_ligacao/<nome>", methods=["GET"])
+def forcar_ligacao(nome):
+    nome = nome.lower()
+    contatos = load_contacts()
+    numero = contatos.get(nome)
+    if numero and validar_numero(numero):
+        ligar_para_verificacao(numero)
+        return jsonify({"status": "sucesso", "mensagem": f"Ligação forçada para {nome} ({numero}) iniciada."})
+    else:
+        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado ou número inválido."})
 
 def _twiml_response(text, voice="alice"):
     resp = VoiceResponse()
@@ -245,7 +232,6 @@ def _twiml_response(text, voice="alice"):
     return Response(str(resp), mimetype="text/xml")
 
 def agendar_ligacoes():
-    print("Agendando ligações periódicas")
     contatos = load_contacts()
     for nome, numero in contatos.items():
         if nome.lower() != "emergencia" and validar_numero(numero):
@@ -256,7 +242,6 @@ def agendar_multiplas_ligacoes():
         {"nome": "jordan", "hora": 9, "minuto": 1},
         {"nome": "jordan", "hora": 9, "minuto": 4},
     ]
-
     for item in agendamentos:
         job_id = f"{item['nome']}_{item['hora']:02d}_{item['minuto']:02d}"
         scheduler.add_job(
@@ -267,22 +252,9 @@ def agendar_multiplas_ligacoes():
             id=job_id,
             replace_existing=True
         )
-        
-@app.route("/forcar_ligacao/<nome>", methods=["GET"])
-def forcar_ligacao(nome):
-    nome = nome.lower()
-    contatos = load_contacts()
-    numero = contatos.get(nome)
-    if numero and validar_numero(numero):
-        ligar_para_verificacao(numero)
-        return jsonify({"status": "sucesso", "mensagem": f"Ligação para {nome} ({numero}) iniciada."})
-    else:
-        return jsonify({"status": "erro", "mensagem": f"Contato '{nome}' não encontrado ou número inválido."}), 404
 
 if __name__ == "__main__":
-    agendar_multiplas_ligacoes()  # agenda os jobs
-    scheduler.add_job(agendar_ligacoes, 'interval', hours=24)  # agenda função periódica
-    scheduler.start()  # inicia o scheduler
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    agendar_multiplas_ligacoes()
+    app.run(host="0.0.0.0", port=5000)
 
 #created by Jordanlvs 💼, all rights reserved ® 
