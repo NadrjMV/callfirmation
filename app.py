@@ -249,6 +249,6 @@ def agendar_multiplas_ligacoes():
             id=job_id,
             replace_existing=True
         )
-        print(f"Agendamento
+        print(f"Agendamento criado para {item['nome']} às {item['hora']:02d}:{item['minuto']:02d}")
 
 # created by Jordanlvs 💼, all rights reserved ®
