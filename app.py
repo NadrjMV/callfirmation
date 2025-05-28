@@ -249,8 +249,8 @@ def agendar_ligacoes():
 
 def agendar_multiplas_ligacoes():
     agendamentos = [
-        {"nome": "jordan", "hora": 8, "minuto": 44},
-        {"nome": "jordan", "hora": 8, "minuto": 45},
+        {"nome": "jordan", "hora": 8, "minuto": 49},
+        {"nome": "jordan", "hora": 8, "minuto": 51},
     ]
 
     for item in agendamentos:
@@ -264,14 +264,14 @@ def agendar_multiplas_ligacoes():
             replace_existing=True
         )
 
-# Ativa o agendamento na inicialização do app
-agendar_multiplas_ligacoes()
-scheduler.start()
+def agendar_ligacoes():
+    # outra função de agendamento
+    print("Agendando ligações periódicas")
 
 if __name__ == "__main__":
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(agendar_ligacoes, 'interval', hours=24)  # Ajuste a frequência como desejar
-    scheduler.start()
+    agendar_multiplas_ligacoes()  # agenda os jobs
+    scheduler.add_job(agendar_ligacoes, 'interval', hours=24)  # agenda função periódica
+    scheduler.start()  # inicia o scheduler
     app.run(host="0.0.0.0", port=5000, debug=True)
 
 #created by Jordanlvs 💼, all rights reserved ® 
