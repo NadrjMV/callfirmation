@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from pytz import timezone
+from twilio.rest import Client
 
 load_dotenv()
 app = Flask(__name__)
