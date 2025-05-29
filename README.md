@@ -1,4 +1,4 @@
-# 🔐 SunShield - Central de Monitoramento - PLIVO
+# 🔐 SunShield - Central de Monitoramento - SIGNALWIRE
 
 Este é um sistema automatizado para **verificação de segurança por chamada de voz**, ideal para monitoramento de ambientes remotos. Utiliza **Twilio** para realizar ligações em horários pré-definidos e ouvir uma resposta verbal.
 
