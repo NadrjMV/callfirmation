@@ -71,7 +71,102 @@ def _twiml_response(text, voice="alice"):
     print(f"[TWIML_RESPONSE] Resposta gerada com texto: '{text}'")
     return Response(str(resp), mimetype="text/xml")
 
-# Atualização da função ligar_para_verificacao_por_nome
+@app.route("/add-contact", methods=["POST"])
+def add_contact():
+    data = request.get_json()
+    print(f"[ADD_CONTACT] Dados recebidos: {data}")
+    nome = data.get("nome", "").lower().strip()
+    telefone = data.get("telefone")
+    if not nome or not telefone:
+        print(f"[ADD_CONTACT] Erro: Nome ou telefone faltando.")
+        return jsonify({"status": "erro", "mensagem": "Nome e telefone são obrigatórios."}), 400
+    if not validar_numero(telefone):
+        print(f"[ADD_CONTACT] Erro: Número inválido '{telefone}'.")
+        return jsonify({"status": "erro", "mensagem": "Número inválido."}), 400
+    contacts = load_contacts()
+    contacts[nome] = telefone
+    save_contacts(contacts)
+    print(f"[ADD_CONTACT] Contato '{nome}' salvo com telefone '{telefone}'.")
+    return jsonify({"status": "sucesso", "mensagem": f"{nome} salvo com sucesso."})
+
+@app.route("/delete-contact", methods=["POST"])
+def delete_contact():
+    data = request.get_json()
+    print(f"[DELETE_CONTACT] Dados recebidos: {data}")
+    nome = data.get("nome", "").lower().strip()
+    contacts = load_contacts()
+    if nome in contacts:
+        del contacts[nome]
+        save_contacts(contacts)
+        print(f"[DELETE_CONTACT] Contato '{nome}' removido.")
+        return jsonify({"status": "sucesso", "mensagem": f"{nome} removido com sucesso."})
+    print(f"[DELETE_CONTACT] Contato '{nome}' não encontrado.")
+    return jsonify({"status": "erro", "mensagem": f"{nome} não encontrado."}), 404
+
+@app.route("/get-contacts")
+def get_contacts():
+    contacts = load_contacts()
+    print(f"[GET_CONTACTS] Retornando {len(contacts)} contatos.")
+    return jsonify(contacts)
+
+@app.route("/listar_contatos")
+def listar_contatos():
+    contacts = load_contacts()
+    print(f"[LISTAR_CONTATOS] Retornando {len(contacts)} contatos.")
+    return jsonify(contacts)
+
+@app.route("/painel-contatos.html")
+def serve_painel():
+    print(f"[SERVE_PAINEL] Enviando painel-contatos.html")
+    return send_from_directory(".", "painel-contatos.html")
+
+# Função que foi removida na versão anterior
+def ligar_para_verificacao(numero_destino):
+    print(f"[LIGAR_PARA_VERIFICACAO] Tentando ligar para: {numero_destino}")
+    
+    if not validar_numero(numero_destino):
+        print(f"[LIGAR_PARA_VERIFICACAO] Número inválido: {numero_destino}")
+        return None
+
+    full_url = f"{base_url}/verifica-sinal?tentativa=1"
+
+    try:
+        response = VoiceResponse()
+        response.say("Central de monitoramento?", language="pt-BR", voice="alice")
+        response.record(
+            action=full_url,
+            method="POST",
+            max_length=5,
+            play_beep=True,
+            timeout=5,
+            transcribe=True,
+            transcribe_callback=full_url,
+            trim="trim-silence",
+            recording_status_callback=full_url,
+            recording_status_callback_method="POST",
+            language="pt-BR"
+        )
+
+        # Criando a chamada
+        chamada = client.calls.create(
+            to=numero_destino,
+            from_=signalwire_number,
+            url=f"{base_url}/twiml-script"
+        )
+
+        # Diagnóstico: Verifique se o SID foi retornado
+        if not chamada or not chamada.sid:
+            print(f"[LIGAR_PARA_VERIFICACAO] Chamada retornou SID vazio ou nulo: {chamada}")
+            raise RuntimeError(f"A chamada foi criada, mas retornou um SID inválido. Resposta: {chamada}")
+
+        print(f"[LIGAR_PARA_VERIFICACAO] Chamada criada com sucesso. SID: {chamada.sid}")
+        return chamada.sid
+
+    except Exception as e:
+        print(f"[LIGAR_PARA_VERIFICACAO] Erro ao criar chamada para {numero_destino}: {e}")
+        traceback.print_exc()
+        raise RuntimeError(f"Erro ao iniciar chamada para {numero_destino}: {str(e)}")
+
 def ligar_para_verificacao_por_nome(nome):
     print(f"[LIGAR_PARA_VERIFICACAO_POR_NOME] Ligando para o contato '{nome}'.")
     
@@ -91,12 +186,21 @@ def ligar_para_verificacao_por_nome(nome):
     
     return sid
 
-# Modificação na função forcar_ligacao
+@app.route("/testar-verificacao/<nome>")
+def testar_verificacao(nome):
+    print(f"[TESTAR_VERIFICACAO] Requisição para testar verificação do contato: {nome}")
+    sid = ligar_para_verificacao_por_nome(nome)
+    if sid:
+        print(f"[TESTAR_VERIFICACAO] Ligação iniciada para {nome} com SID: {sid}")
+        return f"Ligação de verificação para {nome} iniciada. SID: {sid}"
+    print(f"[TESTAR_VERIFICACAO] Erro ao iniciar ligação para {nome}.")
+    return f"Erro ao iniciar ligação para {nome}.", 400
+
 @app.route("/forcar_ligacao/<nome>", methods=["GET"])
 def forcar_ligacao(nome):
     try:
         print(f"Tentando iniciar ligação para: {nome}")
-        sid = ligar_para_verificacao_por_nome(nome)  # usa a função corrigida
+        sid = ligar_para_verificacao_por_nome(nome)  # sua função
         if sid:
             return jsonify({"mensagem": f"Ligação iniciada para {nome}.", "status": "ok"})
         else:
@@ -110,17 +214,6 @@ def forcar_ligacao(nome):
             "detalhes": str(e),
             "traceback": tb
         }), 500
-
-# O restante do código continua inalterado
-@app.route("/testar-verificacao/<nome>")
-def testar_verificacao(nome):
-    print(f"[TESTAR_VERIFICACAO] Requisição para testar verificação do contato: {nome}")
-    sid = ligar_para_verificacao_por_nome(nome)
-    if sid:
-        print(f"[TESTAR_VERIFICACAO] Ligação iniciada para {nome} com SID: {sid}")
-        return f"Ligação de verificação para {nome} iniciada. SID: {sid}"
-    print(f"[TESTAR_VERIFICACAO] Erro ao iniciar ligação para {nome}.")
-    return f"Erro ao iniciar ligação para {nome}.", 400
 
 @app.route("/verifica-sinal", methods=["POST"])
 def verifica_sinal():
