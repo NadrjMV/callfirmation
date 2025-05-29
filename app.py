@@ -146,12 +146,14 @@ def ligar_para_verificacao(numero_destino):
             language="pt-BR"
         )
 
+        # Criando a chamada
         chamada = client.calls.create(
             to=numero_destino,
             from_=signalwire_number,
             url=f"{base_url}/twiml-script"
         )
 
+        # Diagnóstico: Verifique se o SID foi retornado
         if not chamada or not chamada.sid:
             print(f"[LIGAR_PARA_VERIFICACAO] Chamada retornou SID vazio ou nulo: {chamada}")
             raise RuntimeError(f"A chamada foi criada, mas retornou um SID inválido. Resposta: {chamada}")
@@ -272,11 +274,15 @@ def ligar_para_emergencia(numero_destino):
         language="pt-BR"
     )
 
+    # Criando a chamada
     chamada = client.calls.create(
         to=numero_destino,
         from_=signalwire_number,
-        twiml=str(response)
+        url=f"{base_url}/twiml-script"
     )
+
+    # Diagnóstico: Verifique se o SID foi retornado
+    print(f"[LIGAR_PARA_EMERGENCIA] Detalhes da resposta da chamada: {chamada}")
 
     if not chamada or not chamada.sid:
         print(f"[LIGAR_PARA_EMERGENCIA] Chamada retornou SID inválido: {chamada}")
